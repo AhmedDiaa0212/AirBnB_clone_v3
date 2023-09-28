@@ -1,95 +1,82 @@
 #!/usr/bin/python3
-""" objects that handle all default RestFul API actions for Place - Amenity """
-from models.place import Place
+""" console """
+
+import cmd
+from datetime import datetime
+import models
 from models.amenity import Amenity
-from models import storage
-from api.v1.views import app_views
-from os import environ
-from flask import abort, jsonify, make_response, request
-from flasgger.utils import swag_from
+from models.base_model import BaseModel
+from models.city import City
+from models.place import Place
+from models.review import Review
+from models.state import State
+from models.user import User
+import shlex  # for splitting the line along spaces except in double quotes
+
+classes = {"Amenity": Amenity, "BaseModel": BaseModel, "City": City,
+           "Place": Place, "Review": Review, "State": State, "User": User}
 
 
-@app_views.route('places/<place_id>/amenities', methods=['GET'],
-                 strict_slashes=False)
-@swag_from('documentation/place_amenity/get_places_amenities.yml',
-           methods=['GET'])
-def get_place_amenities(place_id):
-    """
-    Retrieves the list of all Amenity objects of a Place
-    """
-    place = storage.get(Place, place_id)
+class HBNBCommand(cmd.Cmd):
+    """ HBNH console """
+    prompt = '(hbnb) '
 
-    if not place:
-        abort(404)
+    def do_EOF(self, arg):
+        """Exits console"""
+        return True
 
-    if environ.get('HBNB_TYPE_STORAGE') == "db":
-        amenities = [amenity.to_dict() for amenity in place.amenities]
-    else:
-        amenities = [storage.get(Amenity, amenity_id).to_dict()
-                     for amenity_id in place.amenity_ids]
+    def emptyline(self):
+        """ overwriting the emptyline method """
+        return False
 
-    return jsonify(amenities)
+    def do_quit(self, arg):
+        """Quit command to exit the program"""
+        return True
 
+    def _key_value_parser(self, args):
+        """creates a dictionary from a list of strings"""
+        new_dict = {}
+        for arg in args:
+            if "=" in arg:
+                kvp = arg.split('=', 1)
+                key = kvp[0]
+                value = kvp[1]
+                if value[0] == value[-1] == '"':
+                    value = shlex.split(value)[0].replace('_', ' ')
+                else:
+                    try:
+                        value = int(value)
+                    except Exception:
+                        try:
+                            value = float(value)
+                        except Exception:
+                            continue
+                new_dict[key] = value
+        return new_dict
 
-@app_views.route('/places/<place_id>/amenities/<amenity_id>',
-                 methods=['DELETE'], strict_slashes=False)
-@swag_from('documentation/place_amenity/delete_place_amenities.yml',
-           methods=['DELETE'])
-def delete_place_amenity(place_id, amenity_id):
-    """
-    Deletes a Amenity object of a Place
-    """
-    place = storage.get(Place, place_id)
-
-    if not place:
-        abort(404)
-
-    amenity = storage.get(Amenity, amenity_id)
-
-    if not amenity:
-        abort(404)
-
-    if environ.get('HBNB_TYPE_STORAGE') == "db":
-        if amenity not in place.amenities:
-            abort(404)
-        place.amenities.remove(amenity)
-    else:
-        if amenity_id not in place.amenity_ids:
-            abort(404)
-        place.amenity_ids.remove(amenity_id)
-
-    storage.save()
-    return make_response(jsonify({}), 200)
-
-
-@app_views.route('/places/<place_id>/amenities/<amenity_id>', methods=['POST'],
-                 strict_slashes=False)
-@swag_from('documentation/place_amenity/post_place_amenities.yml',
-           methods=['POST'])
-def post_place_amenity(place_id, amenity_id):
-    """
-    Link a Amenity object to a Place
-    """
-    place = storage.get(Place, place_id)
-
-    if not place:
-        abort(404)
-
-    amenity = storage.get(Amenity, amenity_id)
-
-    if not amenity:
-        abort(404)
-
-    if environ.get('HBNB_TYPE_STORAGE') == "db":
-        if amenity in place.amenities:
-            return make_response(jsonify(amenity.to_dict()), 200)
+    def do_create(self, arg):
+        """Creates a new instance of a class"""
+        args = arg.split()
+        if len(args) == 0:
+            print("** class name missing **")
+            return False
+        if args[0] in classes:
+            new_dict = self._key_value_parser(args[1:])
+            instance = classes[args[0]](**new_dict)
         else:
-            place.amenities.append(amenity)
-    else:
-        if amenity_id in place.amenity_ids:
-            return make_response(jsonify(amenity.to_dict()), 200)
-        else:
-            place.amenity_ids.append(amenity_id)
+            print("** class doesn't exist **")
+            return False
+        print(instance.id)
+        instance.save()
 
-    storage.save()
-    return make_response(jsonify(amenity.to_dict()), 201)
+    def do_show(self, arg):
+        """Prints an instance as a string based on the class and id"""
+        args = shlex.split(arg)
+        if len(args) == 0:
+            print("** class name missing **")
+            return False
+        if args[0] in classes:
+            if len(args) > 1:
+                key = args[0] + "." + args[1]
+                if key in models.storage.all():
+                    print(models.storage.all()[key])
